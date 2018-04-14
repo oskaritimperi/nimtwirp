@@ -1,7 +1,10 @@
-# nimtwirp
+# A Twirp RPC framework for Nim.
 
-A simple RPC framework. See [twirp](https://twitchtv.github.io/twirp/docs/intro.html)
-for more information.
+A simple RPC framework using [nimpb](https://github.com/oswjk/nimpb). See
+[twirp docs](https://twitchtv.github.io/twirp/docs/intro.html) for more
+information about twirp.
+
+**NOTE** Still in experimental phase.
 
 # Example
 
