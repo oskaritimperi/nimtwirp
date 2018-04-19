@@ -2,6 +2,7 @@ import os
 import osproc
 import strformat
 import strutils
+import parseopt2
 
 import nimpb/compiler/compiler
 import generator
@@ -12,27 +13,29 @@ proc usage() {.noreturn.} =
 
     --out       The output directory for the generated files
     -I          Add a path to the set of include paths
+    --prefix    The URL prefix used for service (default: /twirp/)
 """)
     quit(QuitFailure)
 
 var includes: seq[string] = @[]
 var protos: seq[string] = @[]
 var outdir: string
+var prefix: string = "/twirp/"
 
-if paramCount() == 0:
-    usage()
-
-for idx in 1..paramCount():
-    let param = paramStr(idx)
-
-    if param.startsWith("-I"):
-        add(includes, param[2..^1])
-    elif param.startsWith("--out="):
-        outdir = param[6..^1]
-    elif param == "--help":
-        usage()
-    else:
-        add(protos, param)
+for kind, key, val in getopt():
+    case kind
+    of cmdArgument:
+        add(protos, key)
+    of cmdLongOption, cmdShortOption:
+        case key
+        of "help", "h": usage()
+        of "prefix": prefix = val
+        of "out": outdir = val
+        of "I": add(includes, val)
+        else:
+            echo("error: unknown option: " & key)
+            usage()
+    of cmdEnd: assert(false)
 
 if outdir == nil:
     echo("error: --out is required")
@@ -42,4 +45,4 @@ if len(protos) == 0:
     echo("error: no input files")
     quit(QuitFailure)
 
-compileProtos(protos, includes, outdir, newTwirpServiceGenerator())
+compileProtos(protos, includes, outdir, newTwirpServiceGenerator(prefix))

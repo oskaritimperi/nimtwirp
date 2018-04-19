@@ -3,14 +3,12 @@ import asyncdispatch
 import random
 
 import nimtwirp/errors
+import nimtwirp/response
 
 import service_pb
 import service_twirp
 
-type
-    HaberdasherService = object
-
-proc MakeHat(x: HaberdasherService, size: twirp_example_haberdasher_Size): twirp_example_haberdasher_Hat =
+proc MakeHatImpl(service: Haberdasher, size: twirp_example_haberdasher_Size): twirp_example_haberdasher_Hat =
     if size.inches <= 0:
         raise newTwirpError(TwirpInvalidArgument, "I can't make a hat that small!")
 
@@ -21,6 +19,13 @@ proc MakeHat(x: HaberdasherService, size: twirp_example_haberdasher_Size): twirp
 
 var
     server = newAsyncHttpServer()
-    service: HaberdasherService
+    service {.threadvar.}: Haberdasher
 
-waitFor server.serve(Port(8080), HaberdasherServer(service, "/"))
+service = newHaberdasher()
+service.MakeHatImpl = MakeHatImpl
+
+proc cb(req: Request) {.async.} =
+    var resp = HaberdasherHandler(service, req)
+    await respond(req, resp)
+
+waitFor server.serve(Port(8080), cb)

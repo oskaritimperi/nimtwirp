@@ -20,29 +20,52 @@ import strutils
 import {gen.fileName}
 
 import nimtwirp/errors
+import nimtwirp/response
 
 """
 
-proc genServer(service: Service): string =
+proc genServer(service: Service, prefix: string): string =
     result = &"""
+const
+    {service.name}Prefix* = "{prefix}{service.fullName}/"
+
 type
-    {service.name}* = concept x
+    {service.name}* = ref {service.name}Obj
+    {service.name}Obj* = object of RootObj
 """
 
     for meth in service.methods:
         result &= &"""
-        x.{meth.name}({meth.inputType}) is {meth.outputType}
+        {meth.name}Impl*: proc (service: {service.name}, param: {meth.inputType}): {meth.outputType}
+"""
+
+    for meth in service.methods:
+        result &= &"""
+
+proc {meth.name}*(service: {service.name}, param: {meth.inputType}): {meth.outputType} =
+    if service.{meth.name}Impl == nil:
+        raise newTwirpError(TwirpUnimplemented, "{meth.name} is not implemented")
+    result = service.{meth.name}Impl(service, param)
 """
 
     result &= &"""
 
-proc {service.name}Server*(service: {service.name}, prefix: string): auto =
-    let headers = newHttpHeaders({{"Content-Type": "application/protobuf"}})
-    proc cb(req: Request): Future[void] =
-        try:
-            let servicePrefix = prefix & "{service.fullName}/"
-            if startsWith(req.url.path, servicePrefix):
-                var methodName = req.url.path[len(servicePrefix)..^1]
+proc new{service.name}*(): {service.name} =
+    new(result)
+
+proc {service.name}Handler*(service: {service.name}, req: Request): TwirpResponse =
+    try:
+        if req.reqMethod != HttpPost:
+            raise newTwirpError(TwirpBadRoute, "only POST accepted")
+
+        if getOrDefault(req.headers, "Content-Type") != "application/protobuf":
+            raise newTwirpError(TwirpInternal, "invalid Content-Type")
+
+        if not startsWith(req.url.path, {service.name}Prefix):
+            raise newTwirpError(TwirpBadRoute, "unknown service")
+
+        let methodName = req.url.path[len({service.name}Prefix)..^1]
+
 """
 
     for index, meth in service.methods:
@@ -50,30 +73,20 @@ proc {service.name}Server*(service: {service.name}, prefix: string): auto =
         if index > 0:
             ifel = "elif"
         result &= &"""
-                {ifel} methodName == "{meth.name}":
-                    let inputMsg = new{meth.inputType}(req.body)
-                    let outputMsg = service.{meth.name}(inputMsg)
-                    let body = serialize(outputMsg)
-                    result = respond(req, Http200, body, headers)
+        {ifel} methodName == "{meth.name}":
+            let inputMsg = new{meth.inputType}(req.body)
+            let outputMsg = {meth.name}(service, inputMsg)
+            result = newTwirpResponse(serialize(outputMsg))
 """
 
     result &= &"""
-                else:
-                    raise newTwirpError(TwirpNotFound, "method not found")
-            else:
-                raise newTwirpError(TwirpNotFound, "service not found")
-        except TwirpError as exc:
-            let headers = newHttpHeaders({{"Content-Type": "application/json"}})
-            result = req.respond(exc.httpStatus, $twirpErrorToJson(exc), headers)
-        except Exception as exc:
-            let headers = newHttpHeaders({{"Content-Type": "application/json"}})
-            var err = newTwirpError(TwirpInternal, exc.msg)
-            result = req.respond(err.httpStatus, $twirpErrorToJson(err), headers)
-    result = cb
-
+        else:
+            raise newTwirpError(TwirpBadRoute, "unknown method")
+    except Exception as exc:
+        result = newTwirpResponse(exc)
 """
 
-proc genClient(service: Service): string =
+proc genClient(service: Service, prefix: string): string =
     result = &"""
 
 
@@ -94,7 +107,7 @@ proc new{service.name}Client*(address: string): {service.name}Client =
         result &= &"""
 proc {meth.name}*(client: {service.name}Client, req: {meth.inputType}): {meth.outputType} =
     let body = serialize(req)
-    let resp = client.client.request(client.address & "/{service.fullName}/{meth.name}", httpMethod=HttpPost, body=body)
+    let resp = client.client.request(client.address & {service.name}Prefix & "{meth.name}", httpMethod=HttpPost, body=body)
     let httpStatus = code(resp)
     if httpStatus != Http200:
         if contentType(resp) != "application/json":
@@ -106,11 +119,11 @@ proc {meth.name}*(client: {service.name}Client, req: {meth.inputType}): {meth.ou
 
 """
 
-proc genService(service: Service): string =
-    result = genServer(service)
-    result &= genClient(service)
+proc genService(service: Service, prefix: string): string =
+    result = genServer(service, prefix)
+    result &= genClient(service, prefix)
 
-proc newTwirpServiceGenerator*(): ServiceGenerator =
+proc newTwirpServiceGenerator*(prefix: string): ServiceGenerator =
     new(result)
 
     let gen = result
@@ -118,6 +131,9 @@ proc newTwirpServiceGenerator*(): ServiceGenerator =
     proc myGenImports(): string =
         result = genImports(gen)
 
+    proc myGenService(service: Service): string =
+        result = genService(service, prefix)
+
     result.genImports = myGenImports
-    result.genService = genService
+    result.genService = myGenService
     result.fileSuffix = "twirp"
