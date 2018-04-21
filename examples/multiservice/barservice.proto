@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service Bar {
+    rpc MakeBar(BarReq) returns (BarResp);
+}
+
+message BarReq {
+    int32 a = 1;
+}
+
+message BarResp {
+    int32 b = 2;
+}

@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service Foo {
+    rpc MakeFoo(FooReq) returns (FooResp);
+}
+
+message FooReq {
+    int32 a = 1;
+}
+
+message FooResp {
+    int32 b = 2;
+}
