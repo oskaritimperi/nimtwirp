@@ -16,3 +16,6 @@ See the `example` directory for an example.
 - [x] client generation from protobuf Service definition
 - [x] protobuf input/output
 - [ ] json input/output
+- [x] asynchronous server
+- [x] synchronous client
+- [x] can serve multiple services easily (see [examples/multiservice](examples/multiservice))
