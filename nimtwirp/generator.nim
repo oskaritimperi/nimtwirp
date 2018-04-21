@@ -19,8 +19,8 @@ import strutils
 
 import {gen.fileName}
 
+import nimtwirp/nimtwirp
 import nimtwirp/errors
-import nimtwirp/response
 
 """
 
@@ -36,16 +36,16 @@ type
 
     for meth in service.methods:
         result &= &"""
-        {meth.name}Impl*: proc (service: {service.name}, param: {meth.inputType}): {meth.outputType}
+        {meth.name}Impl*: proc (service: {service.name}, param: {meth.inputType}): Future[{meth.outputType}] {{.gcsafe, closure.}}
 """
 
     for meth in service.methods:
         result &= &"""
 
-proc {meth.name}*(service: {service.name}, param: {meth.inputType}): {meth.outputType} =
+proc {meth.name}*(service: {service.name}, param: {meth.inputType}): Future[{meth.outputType}] {{.async.}} =
     if service.{meth.name}Impl == nil:
         raise newTwirpError(TwirpUnimplemented, "{meth.name} is not implemented")
-    result = service.{meth.name}Impl(service, param)
+    result = await service.{meth.name}Impl(service, param)
 """
 
     result &= &"""
@@ -53,18 +53,17 @@ proc {meth.name}*(service: {service.name}, param: {meth.inputType}): {meth.outpu
 proc new{service.name}*(): {service.name} =
     new(result)
 
-proc {service.name}Handler*(service: {service.name}, req: Request): TwirpResponse =
-    try:
-        if req.reqMethod != HttpPost:
-            raise newTwirpError(TwirpBadRoute, "only POST accepted")
+proc handleRequest*(service: {service.name}, req: Request): Future[nimtwirp.Response] {{.async.}} =
+    if req.reqMethod != HttpPost:
+        raise newTwirpError(TwirpBadRoute, "only POST accepted")
 
-        if getOrDefault(req.headers, "Content-Type") != "application/protobuf":
-            raise newTwirpError(TwirpInternal, "invalid Content-Type")
+    if getOrDefault(req.headers, "Content-Type") != "application/protobuf":
+        raise newTwirpError(TwirpInternal, "invalid Content-Type")
 
-        if not startsWith(req.url.path, {service.name}Prefix):
-            raise newTwirpError(TwirpBadRoute, "unknown service")
+    if not startsWith(req.url.path, {service.name}Prefix):
+        raise newTwirpError(TwirpBadRoute, "unknown service")
 
-        let methodName = req.url.path[len({service.name}Prefix)..^1]
+    let methodName = req.url.path[len({service.name}Prefix)..^1]
 
 """
 
@@ -73,17 +72,15 @@ proc {service.name}Handler*(service: {service.name}, req: Request): TwirpRespons
         if index > 0:
             ifel = "elif"
         result &= &"""
-        {ifel} methodName == "{meth.name}":
-            let inputMsg = new{meth.inputType}(req.body)
-            let outputMsg = {meth.name}(service, inputMsg)
-            result = newTwirpResponse(serialize(outputMsg))
+    {ifel} methodName == "{meth.name}":
+        let inputMsg = new{meth.inputType}(req.body)
+        let outputMsg = await {meth.name}(service, inputMsg)
+        return nimtwirp.newResponse(serialize(outputMsg))
 """
 
     result &= &"""
-        else:
-            raise newTwirpError(TwirpBadRoute, "unknown method")
-    except Exception as exc:
-        result = newTwirpResponse(exc)
+    else:
+        raise newTwirpError(TwirpBadRoute, "unknown method")
 """
 
 proc genClient(service: Service, prefix: string): string =

@@ -1,7 +1,10 @@
-import json
 import httpcore
+import json
+import strutils
 
 type
+    TwirpErrorRef* = ref TwirpError
+
     TwirpError* = object of Exception
         code*: string
         httpStatus*: HttpCode
@@ -52,9 +55,16 @@ template newTwirpError*(T: typedesc, msg: string): untyped =
     err
 
 proc twirpErrorToJson*[T](error: T): JsonNode =
+    # Get rid of the async tracebacks if any
+    const header = "\nAsync traceback:\n"
+    var msg = error.msg
+    if header in msg:
+        let start = msg.find(header)
+        msg = msg[0..<start]
+
     %*{
         "code": error.code,
-        "msg": error.msg
+        "msg": msg
     }
 
 proc twirpErrorFromJson*(node: JsonNode): ref TwirpError =
