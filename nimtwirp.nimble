@@ -5,7 +5,7 @@ author        = "Oskari Timperi"
 description   = "A new awesome nimble package"
 license       = "MIT"
 
-skipDirs = @["example"]
+skipDirs = @["examples"]
 
 bin = @["nimtwirp/nimtwirp_build"]
 
