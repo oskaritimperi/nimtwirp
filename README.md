@@ -4,7 +4,7 @@ A simple RPC framework using [nimpb](https://github.com/oswjk/nimpb). See
 [twirp docs](https://twitchtv.github.io/twirp/docs/intro.html) for more
 information about twirp.
 
-**NOTE** Still in experimental phase.
+**NOTE** Still in experimental phase. APIs can change without notice :-)
 
 # Example
 
