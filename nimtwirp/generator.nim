@@ -54,16 +54,7 @@ proc new{service.name}*(): {service.name} =
     new(result)
 
 proc handleRequest*(service: {service.name}, req: Request): Future[nimtwirp.Response] {{.async.}} =
-    if req.reqMethod != HttpPost:
-        raise newTwirpError(TwirpBadRoute, "only POST accepted")
-
-    if getOrDefault(req.headers, "Content-Type") != "application/protobuf":
-        raise newTwirpError(TwirpInternal, "invalid Content-Type")
-
-    if not startsWith(req.url.path, {service.name}Prefix):
-        raise newTwirpError(TwirpBadRoute, "unknown service")
-
-    let methodName = req.url.path[len({service.name}Prefix)..^1]
+    let (_, methodName) = validateRequest(req, {service.name}Prefix)
 
 """
 

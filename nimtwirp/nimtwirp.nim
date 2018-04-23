@@ -4,6 +4,7 @@ import httpclient
 import json
 import macros
 import strformat
+import strutils
 
 import errors
 
@@ -116,3 +117,19 @@ proc request*(client: Client, prefix: string, meth: string, body: string): httpc
             raise newTwirpError(TwirpInternal, "Invalid Content-Type in response")
         let errorInfo = parseJson(result.body)
         raise twirpErrorFromJson(errorInfo)
+
+proc validateRequest*(request: asynchttpserver.Request, prefix: string): tuple[contentType: string, methodName: string] =
+    if request.reqMethod != HttpPost:
+        raise newTwirpError(TwirpBadRoute, "only POST accepted")
+
+    result.contentType = getOrDefault(request.headers, "Content-Type")
+
+    if result.contentType != "application/protobuf":
+        raise newTwirpError(TwirpInternal,
+            "expected Content-Type to be application/protobuf instead of " &
+            result.contentType)
+
+    if not startsWith(request.url.path, prefix):
+        raise newTwirpError(TwirpBadRoute, "unknown service")
+
+    result.methodName = request.url.path[len(prefix)..^1]
