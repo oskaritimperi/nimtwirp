@@ -41,7 +41,7 @@ waitFor server.serve(Port(8080), handler)
 
 # Or this way (idea copied from Jester) if your needs are simple.
 #
-#var settings = newSettings(8080)
+#var settings = newSettings(Port(8080))
 #twirpServices(settings):
 #    service
 #runForever()
