@@ -88,9 +88,7 @@ proc genClient(service: Service, prefix: string): string =
 
 
 type
-    {service.name}Client* = ref object
-        client*: HttpClient
-        address*: string
+    {service.name}Client* = ref object of nimtwirp.Client
 
 proc new{service.name}Client*(address: string): {service.name}Client =
     new(result)
@@ -104,15 +102,8 @@ proc new{service.name}Client*(address: string): {service.name}Client =
         result &= &"""
 proc {meth.name}*(client: {service.name}Client, req: {meth.inputType}): {meth.outputType} =
     let body = serialize(req)
-    let resp = client.client.request(client.address & {service.name}Prefix & "{meth.name}", httpMethod=HttpPost, body=body)
-    let httpStatus = code(resp)
-    if httpStatus != Http200:
-        if contentType(resp) != "application/json":
-            raise newTwirpError(TwirpInternal, "Invalid Content-Type in response")
-        let errorInfo = parseJson(resp.body)
-        raise twirpErrorFromJson(errorInfo)
-    else:
-        result = new{meth.outputType}(resp.body)
+    let resp = request(client, {service.name}Prefix, "{meth.name}", body)
+    result = new{meth.outputType}(resp.body)
 
 """
 

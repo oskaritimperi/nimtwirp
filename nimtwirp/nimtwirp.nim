@@ -1,5 +1,6 @@
 import asyncdispatch
 import asynchttpserver
+import httpclient
 import json
 import macros
 import strformat
@@ -17,6 +18,10 @@ type
         headers*: HttpHeaders
 
     ServeHandlerProc = proc (request: asynchttpserver.Request): Future[nimtwirp.Response] {.gcsafe, closure.}
+
+    Client* = ref object of RootObj
+        client*: HttpClient
+        address*: string
 
 proc respond*(req: asynchttpserver.Request, resp: nimtwirp.Response): Future[void] =
     req.respond(resp.code, resp.body, resp.headers)
@@ -99,3 +104,15 @@ proc handler(request: asynchttpserver.Request): Future[nimtwirp.Response] {{.asy
     result = newStmtList()
     add(result, handlerProc)
     add(result, parseStmt(&"nimtwirp.serve(handler, {settings.symbol})"))
+
+proc request*(client: Client, prefix: string, meth: string, body: string): httpclient.Response =
+    let address = client.address & prefix & meth
+    let headers = newHttpHeaders({"Content-Length": $len(body)})
+    result = request(client.client, address, httpMethod=HttpPost, body=body,
+        headers=headers)
+    let httpStatus = code(result)
+    if httpStatus != Http200:
+        if contentType(result) != "application/json":
+            raise newTwirpError(TwirpInternal, "Invalid Content-Type in response")
+        let errorInfo = parseJson(result.body)
+        raise twirpErrorFromJson(errorInfo)
