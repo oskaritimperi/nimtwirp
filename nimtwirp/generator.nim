@@ -54,7 +54,7 @@ proc new{service.name}*(): {service.name} =
     new(result)
 
 proc handleRequest*(service: {service.name}, req: Request): Future[nimtwirp.Response] {{.async.}} =
-    let (_, methodName) = validateRequest(req, {service.name}Prefix)
+    let (contentType, methodName) = validateRequest(req, {service.name}Prefix)
 
 """
 
@@ -64,9 +64,20 @@ proc handleRequest*(service: {service.name}, req: Request): Future[nimtwirp.Resp
             ifel = "elif"
         result &= &"""
     {ifel} methodName == "{meth.name}":
-        let inputMsg = new{meth.inputType}(req.body)
+        var inputMsg: {meth.inputType}
+
+        if contentType == "application/protobuf":
+            inputMsg = new{meth.inputType}(req.body)
+        elif contentType == "application/json":
+            let node = parseJson(req.body)
+            inputMsg = parse{meth.inputType}(node)
+
         let outputMsg = await {meth.name}(service, inputMsg)
-        return nimtwirp.newResponse(serialize(outputMsg))
+
+        if contentType == "application/protobuf":
+            return nimtwirp.newResponse(serialize(outputMsg))
+        elif contentType == "application/json":
+            return nimtwirp.newResponse(toJson(outputMsg))
 """
 
     result &= &"""
@@ -81,10 +92,15 @@ proc genClient(service: Service, prefix: string): string =
 type
     {service.name}Client* = ref object of nimtwirp.Client
 
-proc new{service.name}Client*(address: string): {service.name}Client =
+proc new{service.name}Client*(address: string, kind = ClientKind.Protobuf): {service.name}Client =
     new(result)
     result.client = newHttpClient()
-    result.client.headers = newHttpHeaders({{"Content-Type": "application/protobuf"}})
+    result.kind = kind
+    case kind
+    of ClientKind.Protobuf:
+        result.client.headers = newHttpHeaders({{"Content-Type": "application/protobuf"}})
+    of ClientKind.Json:
+        result.client.headers = newHttpHeaders({{"Content-Type": "application/json"}})
     result.address = address
 
 """
@@ -92,9 +108,18 @@ proc new{service.name}Client*(address: string): {service.name}Client =
     for meth in service.methods:
         result &= &"""
 proc {meth.name}*(client: {service.name}Client, req: {meth.inputType}): {meth.outputType} =
-    let body = serialize(req)
+    var body: string
+    case client.kind
+    of ClientKind.Protobuf:
+        body = serialize(req)
+    of ClientKind.Json:
+        body = $toJson(req)
     let resp = request(client, {service.name}Prefix, "{meth.name}", body)
-    result = new{meth.outputType}(resp.body)
+    case client.kind
+    of ClientKind.Protobuf:
+        result = new{meth.outputType}(resp.body)
+    of ClientKind.Json:
+        result = parse{meth.outputType}(parseJson(resp.body))
 
 """
 

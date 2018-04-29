@@ -23,6 +23,11 @@ type
     Client* = ref object of RootObj
         client*: HttpClient
         address*: string
+        kind*: ClientKind
+
+    ClientKind* {.pure.} = enum
+        Protobuf
+        Json
 
 proc respond*(req: asynchttpserver.Request, resp: nimtwirp.Response): Future[void] =
     req.respond(resp.code, resp.body, resp.headers)
@@ -45,6 +50,13 @@ proc newResponse*(body: string): nimtwirp.Response =
     result.code = Http200
     result.body = body
     result.headers = newHttpHeaders({"Content-Type": "application/protobuf"})
+
+proc newResponse*(node: JsonNode): nimtwirp.Response =
+    new(result)
+    result.code = Http200
+    result.body = newStringOfCap(512)
+    toUgly(result.body, node)
+    result.headers = newHttpHeaders({"Content-Type": "application/json"})
 
 proc handleHttpRequest(request: asynchttpserver.Request, handler: ServeHandlerProc) {.async.} =
     var fut = handler(request)
@@ -124,9 +136,10 @@ proc validateRequest*(request: asynchttpserver.Request, prefix: string): tuple[c
 
     result.contentType = getOrDefault(request.headers, "Content-Type")
 
-    if result.contentType != "application/protobuf":
+    if result.contentType != "application/protobuf" and
+       result.contentType != "application/json":
         raise newTwirpError(TwirpInternal,
-            "expected Content-Type to be application/protobuf instead of " &
+            "expected Content-Type to be application/protobuf or application/json instead of " &
             result.contentType)
 
     if not startsWith(request.url.path, prefix):
