@@ -8,6 +8,7 @@ license       = "MIT"
 skipDirs = @["examples"]
 
 bin = @["nimtwirp/nimtwirp_build"]
+installExt = @["nim"]
 
 # Dependencies
 
